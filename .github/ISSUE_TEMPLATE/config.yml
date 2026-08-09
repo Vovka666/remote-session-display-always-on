@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Troubleshooting first
+    url: https://github.com/Vovka666/vigil/blob/main/docs/TROUBLESHOOTING.md
+    about: A section for every failure vigil doctor can report, and the ones it cannot.
+  - name: How it works
+    url: https://github.com/Vovka666/vigil/blob/main/docs/HOW-IT-WORKS.md
+    about: Why EnumDisplayDevices lies, why DisplaySwitch cannot be selective, and what the driver does.

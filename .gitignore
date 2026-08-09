@@ -1,0 +1,22 @@
+# Local scratch
+_t/
+_scratch/
+*.local.json
+
+# Never commit the vendor's driver package - it is downloaded at install time
+driver/
+usbmmidd_v2*
+*.zip
+
+# Runtime artefacts
+vigil.log
+config.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Windows
+Thumbs.db
+desktop.ini

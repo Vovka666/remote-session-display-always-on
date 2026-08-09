@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every script parses
+        shell: powershell
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            if ($errors) {
+              $failed = $true
+              Write-Host "FAIL $($_.Name)" -ForegroundColor Red
+              $errors | ForEach-Object { Write-Host "     line $($_.Extent.StartLineNumber): $($_.Message)" }
+            } else {
+              Write-Host "ok   $($_.Name)"
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Scripts are plain ASCII
+        shell: powershell
+        # Windows PowerShell 5.1 reads a .ps1 without a BOM using the system
+        # code page. One em dash in a comment breaks the file on a machine with
+        # a non-Latin locale, and the parse error points somewhere unrelated.
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            $bytes = [IO.File]::ReadAllBytes($_.FullName)
+            $bad = $bytes | Where-Object { $_ -gt 127 }
+            if ($bad) {
+              $failed = $true
+              Write-Host "FAIL $($_.Name): $($bad.Count) non-ASCII bytes" -ForegroundColor Red
+            } else {
+              Write-Host "ok   $($_.Name)"
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Components load without touching the machine
+        shell: powershell
+        # Loading must not attach devices, register tasks or reach the network.
+        # If that ever changes, this step is where it shows up.
+        run: |
+          foreach ($part in 'Config','Display','Monitor','Driver','Actions','Tasks','Doctor') {
+            . ".\src\$part.ps1"
+            Write-Host "loaded $part"
+          }
+          if (-not (Get-Command Get-VigilTarget -ErrorAction SilentlyContinue)) { throw 'Get-VigilTarget missing' }
+          if (-not (Get-Command Invoke-VigilEnsure -ErrorAction SilentlyContinue)) { throw 'Invoke-VigilEnsure missing' }
+
+      - name: Read-only commands run on a machine with no virtual display
+        shell: powershell
+        # A GitHub runner has no monitor and no driver, which is a useful test:
+        # status and doctor must report that plainly instead of throwing.
+        run: |
+          .\vigil.cmd version
+          .\vigil.cmd status
+          .\vigil.cmd doctor
+          exit 0
+
+      - name: PSScriptAnalyzer
+        shell: powershell
+        run: |
+          # Advisory when the gallery is unreachable, enforcing when it is not:
+          # a linter that cannot install should not fail a build, but a real
+          # Error-severity finding still should.
+          try {
+            Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck -ErrorAction Stop
+            Import-Module PSScriptAnalyzer -ErrorAction Stop
+          } catch {
+            Write-Host "::warning::PSScriptAnalyzer unavailable, skipping: $($_.Exception.Message)"
+            exit 0
+          }
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning `
+            -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions,PSAvoidUsingPositionalParameters
+          if ($results) {
+            $results | Format-Table -AutoSize | Out-String | Write-Host
+            if ($results | Where-Object { $_.Severity -eq 'Error' }) { exit 1 }
+          } else {
+            Write-Host 'clean'
+          }

@@ -1,0 +1,77 @@
+name: Something does not work
+description: Vigil misbehaves, or your machine still ends up without a display
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        `vigil doctor` prints no machine name, user name or serial - it is safe
+        to paste as-is, and it usually contains the whole diagnosis.
+
+        Before opening: [docs/TROUBLESHOOTING.md](../blob/main/docs/TROUBLESHOOTING.md)
+        has a section for each thing doctor can report.
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: vigil doctor
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: remote
+    attributes:
+      label: How do you reach this machine?
+      description: >-
+        This decides which half of Vigil is involved. Remote Desktop makes its
+        own session with its own display; everything else attaches to the
+        console session, which is the one that goes dark.
+      options:
+        - Chrome Remote Desktop
+        - Parsec
+        - VNC (any flavour)
+        - AnyDesk
+        - TeamViewer
+        - Remote Desktop (RDP)
+        - Sitting at the machine
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: monitors
+    attributes:
+      label: Is a monitor physically attached?
+      options:
+        - "No - fully headless"
+        - "Yes, but switched off"
+        - "Yes, switched on"
+        - "Laptop with the lid closed"
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows build
+      description: "`winver`, or the first line of vigil doctor"
+      placeholder: "Windows 11 Home 25H2, build 26200"
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: vigil log
+      description: Optional, but the watchdog records every check it made.
+      render: text
