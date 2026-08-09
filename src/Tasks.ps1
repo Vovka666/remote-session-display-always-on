@@ -14,6 +14,13 @@
     SYSTEM would rearrange session 0, which nobody is looking at. So everything
     that touches topology runs as the interactive user; only the boot-time
     device attach runs as SYSTEM, because at that point there is no user yet.
+
+    Windows: powershell.exe is a console application, so Task Scheduler gives
+    it a visible conhost window and -WindowStyle Hidden only takes it away
+    afterwards. Those few frames are enough to steal focus, and a five-minute
+    watchdog then drops a fullscreen game to the desktop twelve times an hour.
+    The tasks therefore go through a tiny WScript launcher, which starts
+    PowerShell already hidden rather than hiding it after the fact.
 #>
 
 $script:VigilTaskFolder = '\Vigil'
@@ -32,10 +39,86 @@ function Get-VigilTaskPath {
     "$script:VigilTaskFolder\$Name"
 }
 
+function Get-VigilLauncherPath {
+    Join-Path (Get-VigilRoot) 'launch-hidden.vbs'
+}
+
+function Test-VigilScriptHost {
+    <#
+    .SYNOPSIS
+        Is Windows Script Host allowed to run on this machine?
+    .DESCRIPTION
+        Managed machines sometimes switch it off by policy, and a disabled host
+        fails silently: the task starts, exits, and the watchdog is dead while
+        still looking installed. Checked so we can fall back instead.
+    #>
+    foreach ($root in 'HKLM:', 'HKCU:') {
+        $key = Join-Path $root 'SOFTWARE\Microsoft\Windows Script Host\Settings'
+        $settings = Get-ItemProperty -Path $key -ErrorAction SilentlyContinue
+        if (-not $settings) { continue }
+        # The key is normally there with no Enabled value at all, and reading a
+        # property that does not exist is an error under Set-StrictMode 2.0.
+        if ($settings.PSObject.Properties.Name -notcontains 'Enabled') { continue }
+        if ([int]$settings.Enabled -eq 0) { return $false }
+    }
+    Test-Path (Join-Path $env:SystemRoot 'System32\wscript.exe')
+}
+
+function Install-VigilLauncher {
+    <#
+    .SYNOPSIS
+        Write the windowless launcher next to the entry point.
+    .DESCRIPTION
+        Generated rather than shipped, so it always points at the installed
+        copy and cannot drift away from it.
+    #>
+    [CmdletBinding()]
+    param()
+
+    # Single-quoted here-string: this is VBScript, and nothing in it should be
+    # expanded by PowerShell on the way out.
+    $body = @'
+Option Explicit
+' Vigil launcher - start a PowerShell command with no window, ever.
+'
+' Task Scheduler hands powershell.exe a visible console window, and
+' -WindowStyle Hidden only removes it once the process is already up. wscript
+' draws nothing of its own, and Run(..., 0, True) starts the child with the
+' window hidden from the first frame, so nothing appears at all.
+'
+' Argument 0 is the PowerShell script; the rest are passed on to it. The exit
+' code is propagated, so Task Scheduler still reports a real result.
+
+Dim shell, cmd, i
+
+If WScript.Arguments.Count < 1 Then WScript.Quit 87
+
+Set shell = CreateObject("WScript.Shell")
+cmd = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File """ & WScript.Arguments(0) & """"
+For i = 1 To WScript.Arguments.Count - 1
+    cmd = cmd & " " & WScript.Arguments(i)
+Next
+
+WScript.Quit shell.Run(cmd, 0, True)
+'@
+
+    $path = Get-VigilLauncherPath
+    Set-Content -LiteralPath $path -Value $body -Encoding ASCII
+    $path
+}
+
 function New-VigilAction {
     param([Parameter(Mandatory)][string] $Command)
 
     $entry = Join-Path (Get-VigilRoot) 'vigil.ps1'
+    $launcher = Get-VigilLauncherPath
+
+    if ((Test-Path $launcher) -and (Test-VigilScriptHost)) {
+        return New-ScheduledTaskAction -Execute 'wscript.exe' `
+            -Argument ('//B //Nologo "{0}" "{1}" {2}' -f $launcher, $entry, $Command)
+    }
+
+    # A watchdog that blinks is still better than one that cannot start.
     New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" {1}' -f $entry, $Command)
 }
@@ -107,6 +190,10 @@ function Install-VigilTask {
     param([hashtable] $Config = (Read-VigilConfig))
 
     $created = @()
+
+    # Before any task is registered: New-VigilAction points at this file, and
+    # falls back to a plain PowerShell action if it is not there.
+    Install-VigilLauncher | Out-Null
 
     $created += Register-VigilTask -Name $script:VigilTasks.On -Command 'on' `
                     -Description 'Bring the virtual display up and rebuild the topology.'

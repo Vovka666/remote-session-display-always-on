@@ -163,6 +163,16 @@ function Invoke-VigilDoctor {
         }
     }
 
+    # The tasks run through a WScript launcher so they never flash a console
+    # window over a fullscreen application. If policy has switched Windows
+    # Script Host off since install, every trigger now fires into nothing while
+    # the tasks still read as installed and healthy above.
+    if (@($tasks | Where-Object { $_.Installed }).Count -gt 0 -and -not (Test-VigilScriptHost)) {
+        $report.Add($script:VigilWarn, 'script host',
+            'Windows Script Host is disabled by policy, so the windowless launcher cannot run.' +
+            "`n        run: vigil install   (it will register plain PowerShell tasks instead)")
+    }
+
     $report
 }
 

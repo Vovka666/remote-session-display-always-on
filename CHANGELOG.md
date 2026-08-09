@@ -3,6 +3,22 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this
 project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The watchdog no longer flashes a console window.** `powershell.exe` is a
+  console application, so Task Scheduler gave it a visible window and
+  `-WindowStyle Hidden` only took it away once the process was already up.
+  Those few frames were enough to steal focus, which dropped fullscreen
+  applications - games above all - to the desktop every five minutes. The
+  tasks now run through a generated WScript launcher that starts PowerShell
+  hidden from the first frame. Where Windows Script Host is disabled by
+  policy, installation falls back to the previous plain PowerShell action and
+  `vigil doctor` says so.
+
+  Existing installations keep the old tasks until `vigil install` is run again.
+
 ## [1.0.0] - 2026-08-09
 
 First release. Built and verified on Windows 11 Home 25H2 (build 26200) with
