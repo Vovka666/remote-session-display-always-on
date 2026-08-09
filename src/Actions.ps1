@@ -17,8 +17,10 @@ function Get-VigilState {
     param([hashtable] $Config = (Read-VigilConfig))
 
     $active = @(Get-VigilTarget -ActiveOnly)
-    $own = @(Get-VigilOwnMonitor -Backend $Config.backend)
-    $foreign = @(Get-VigilForeignVirtual -Backend $Config.backend)
+    # One sweep of the device tree, filtered three ways.
+    $all = @(Get-VigilMonitor)
+    $own = @($all | Where-Object { $_.Owner -eq $Config.backend -and $_.Present })
+    $foreign = @($all | Where-Object { $_.IsVirtual -and $_.Owner -ne $Config.backend -and $_.Present })
 
     # An active target is "virtual" when its device path belongs to one of our
     # virtual monitors. Matching on the path keeps this honest when several
@@ -47,6 +49,7 @@ function Get-VigilState {
         VirtualCount    = $activeVirtual.Count
         OwnMonitors     = $own
         ForeignVirtual  = $foreign
+        AllMonitors     = $all
         HasPicture      = ($active.Count -gt 0)
         DriverInstalled = (Test-VigilDriverInstalled)
     }
@@ -220,7 +223,7 @@ function Format-VigilStatus {
         $lines += ("  [{0}] {1,-28} {2}" -f $kind, $name, $mode)
     }
 
-    $ghosts = @(Get-VigilMonitor | Where-Object { -not $_.Present })
+    $ghosts = @($state.AllMonitors | Where-Object { -not $_.Present })
     if ($ghosts.Count -gt 0) {
         $lines += ''
         $lines += "Remembered but not attached ($($ghosts.Count)):"

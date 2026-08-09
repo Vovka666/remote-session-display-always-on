@@ -23,6 +23,20 @@ $script:VigilVirtualAdapters = [ordered]@{
     'rdp'     = @('Remote Desktop Graphics', 'Microsoft Remote Display')
 }
 
+# Walking the device tree costs about a second per monitor, because the parent
+# lookup is a separate CIM call each time. A single status screen asks three
+# times over, which is how a shortcut press came to take half a minute. The
+# answer cannot change without a device arriving or leaving, so it is cached
+# for a few seconds and cleared explicitly when Vigil attaches or detaches one.
+$script:VigilMonitorCache = $null
+$script:VigilMonitorCacheAt = [datetime]::MinValue
+$script:VigilMonitorCacheSeconds = 5
+
+function Clear-VigilMonitorCache {
+    $script:VigilMonitorCache = $null
+    $script:VigilMonitorCacheAt = [datetime]::MinValue
+}
+
 function Get-VigilMonitor {
     <#
     .SYNOPSIS
@@ -32,11 +46,20 @@ function Get-VigilMonitor {
         Status 'OK' means present. 'Unknown' means the device is remembered but
         not attached - an unplugged monitor or a TV that is switched off. Those
         ghosts are why counting monitors is not the same as counting pictures.
+
+        Results are cached briefly; use -Fresh, or Clear-VigilMonitorCache,
+        after changing what is attached.
     #>
     [CmdletBinding()]
-    param()
+    param([switch] $Fresh)
+
+    if (-not $Fresh -and $script:VigilMonitorCache -and
+        ((Get-Date) - $script:VigilMonitorCacheAt).TotalSeconds -lt $script:VigilMonitorCacheSeconds) {
+        return $script:VigilMonitorCache
+    }
 
     $monitors = @(Get-PnpDevice -Class Monitor -ErrorAction SilentlyContinue)
+    $result = New-Object System.Collections.ArrayList
     foreach ($monitor in $monitors) {
         $adapterName = ''
         try {
@@ -58,7 +81,7 @@ function Get-VigilMonitor {
             if ($owner) { break }
         }
 
-        [pscustomobject]@{
+        [void]$result.Add([pscustomobject]@{
             InstanceId  = $monitor.InstanceId
             Name        = $monitor.FriendlyName
             Status      = $monitor.Status          # OK = attached, Unknown = ghost
@@ -66,8 +89,12 @@ function Get-VigilMonitor {
             Adapter     = $adapterName
             IsVirtual   = [bool]$owner
             Owner       = $(if ($owner) { $owner } else { 'physical' })
-        }
+        })
     }
+
+    $script:VigilMonitorCache = $result.ToArray()
+    $script:VigilMonitorCacheAt = Get-Date
+    $script:VigilMonitorCache
 }
 
 function Get-VigilOwnMonitor {

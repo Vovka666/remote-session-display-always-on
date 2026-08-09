@@ -29,6 +29,14 @@ Secure Boot enabled.
 - Configuration in `C:\ProgramData\Vigil\config.json` for topology, exclusions,
   watchdog triggers and the safety interlock.
 
+### Notes on speed
+
+- The device tree is walked once per command and cached briefly. Working out
+  which monitors are virtual costs about a second each, and a status screen was
+  asking three times over.
+- Attach and detach watch plain device ids rather than re-deriving ownership on
+  every poll, which took a shortcut press from 30 seconds to 11.
+
 ### Notes on display behaviour
 
 - Topology is applied with the modes already in use. Letting Windows re-derive

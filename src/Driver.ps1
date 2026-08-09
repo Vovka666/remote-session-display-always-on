@@ -185,16 +185,29 @@ function Add-VigilVirtualDisplay {
     $exe = Get-VigilDeviceInstaller -Config $Config
     if (-not $exe) { throw 'driver files are missing - run: vigil install' }
 
+    # Note what is present first, so arrival can be spotted by comparing plain
+    # device ids. Asking "is one of ours attached yet" instead would walk the
+    # whole device tree on every poll, and each walk costs about a second per
+    # monitor.
+    $before = @(Get-PnpDevice -Class Monitor -ErrorAction SilentlyContinue |
+                Where-Object { $_.Status -eq 'OK' } | ForEach-Object { $_.InstanceId })
+
     Start-Process -FilePath $exe -ArgumentList 'enableidd', '1' `
                   -WorkingDirectory (Split-Path $exe) -Wait -WindowStyle Hidden
 
     # Windows needs a moment to enumerate the new monitor; the topology call
     # that follows would otherwise not see it.
-    for ($i = 0; $i -lt 12; $i++) {
-        Start-Sleep -Milliseconds 500
-        if (@(Get-VigilOwnMonitor).Count -gt 0) { return $true }
+    for ($i = 0; $i -lt 16; $i++) {
+        Start-Sleep -Milliseconds 400
+        $now = @(Get-PnpDevice -Class Monitor -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Status -eq 'OK' } | ForEach-Object { $_.InstanceId })
+        if (@($now | Where-Object { $before -notcontains $_ }).Count -gt 0) {
+            Clear-VigilMonitorCache
+            return $true
+        }
     }
-    $false
+    Clear-VigilMonitorCache
+    (@(Get-VigilOwnMonitor).Count -gt 0)
 }
 
 function Remove-VigilVirtualDisplay {
@@ -208,13 +221,30 @@ function Remove-VigilVirtualDisplay {
     $exe = Get-VigilDeviceInstaller -Config $Config
     if (-not $exe) { throw 'driver files are missing - run: vigil install' }
 
+    # Which monitors are ours is worked out once. Re-deriving it each round
+    # would mean another walk of the device tree - about a second per monitor -
+    # and turn a two-second detach into half a minute of waiting at a shortcut.
+    $ours = @(Get-VigilOwnMonitor | ForEach-Object { $_.InstanceId })
+    if ($ours.Count -eq 0) { return $true }
+
+    function Test-StillAttached {
+        param([string[]] $Ids)
+        @(Get-PnpDevice -Class Monitor -ErrorAction SilentlyContinue |
+          Where-Object { $Ids -contains $_.InstanceId -and $_.Status -eq 'OK' }).Count
+    }
+
     for ($i = 0; $i -lt $Max; $i++) {
-        if (@(Get-VigilOwnMonitor).Count -eq 0) { break }
+        if ((Test-StillAttached -Ids $ours) -eq 0) { break }
         Start-Process -FilePath $exe -ArgumentList 'enableidd', '0' `
                       -WorkingDirectory (Split-Path $exe) -Wait -WindowStyle Hidden
-        Start-Sleep -Seconds 3
+        for ($w = 0; $w -lt 10; $w++) {
+            Start-Sleep -Milliseconds 400
+            if ((Test-StillAttached -Ids $ours) -eq 0) { break }
+        }
     }
-    (@(Get-VigilOwnMonitor).Count -eq 0)
+
+    Clear-VigilMonitorCache
+    ((Test-StillAttached -Ids $ours) -eq 0)
 }
 
 function Get-VigilDriverResolutions {
