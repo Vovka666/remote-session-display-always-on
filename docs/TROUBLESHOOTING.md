@@ -223,4 +223,4 @@ then `vigil install` to re-register the tasks.
 Open an issue with `vigil doctor` attached. It prints no machine name, user
 name or serial, so it is safe to paste as-is.
 
-<https://github.com/Vovka666/vigil/issues>
+<https://github.com/Vovka666/remote-session-display-always-on/issues>

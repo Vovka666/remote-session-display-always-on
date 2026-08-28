@@ -11,8 +11,8 @@ exists so nobody has to rediscover them.
 ## Running from a clone
 
 ```powershell
-git clone https://github.com/Vovka666/vigil.git
-cd vigil
+git clone https://github.com/Vovka666/remote-session-display-always-on.git
+cd remote-session-display-always-on
 .\vigil.cmd status
 .\vigil.cmd doctor
 ```

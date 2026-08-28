@@ -193,7 +193,7 @@ function Format-VigilDoctor {
         'fail' { $lines += 'Something is broken - details above.' }
     }
     if ($Report.Worst -ne 'ok') {
-        $lines += 'Troubleshooting: docs/TROUBLESHOOTING.md   Issues: https://github.com/Vovka666/vigil/issues'
+        $lines += 'Troubleshooting: docs/TROUBLESHOOTING.md   Issues: https://github.com/Vovka666/remote-session-display-always-on/issues'
     }
     $lines -join "`n"
 }
